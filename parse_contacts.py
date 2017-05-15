@@ -16,96 +16,102 @@ def check_type(text):
     else:
         return unidecode(text)
 
-def parse_xml(tree):
-    '''nct_id''' 
-    nct_id = None
-    id_info = tree.find('id_info')
-    if id_info is not None:
-        nct_id = id_info.find('nct_id')
-        if nct_id is not None:
-            nct_id = check_type(nct_id.text)
+def parse_tree(tree, tags):
+    text_field = " " 
+    child = []
+    for i, tag in enumerate(tags):
+        if i == 0:
+            child.append(tree.find(tag))
+        else:
+            child.append(child[i-1].find(tag))
+        if child[i] is None:
+            break
+        if i == len(tags)-1:
+            text_field = check_type(child[i].text)
+    return text_field
+
+def parse_subtree(element, tags):
+    child = [] 
+    for i, tag in enumerate(tags):
+        if i == 0:
+            child.append(element.find(tag))
+        else:
+            child.append(child[i-1].find(tag))
+        if child[i] is None:
+            return " "
+        if i == len(tags)-1:
+            return check_type(child[i].text)
     
-    '''location'''
-    facility_name = None
-    location = tree.find('location')
-    if location is not None:
-        facility = location.find('facility')
-        if facility is not None:
-            facility_name = facility.find('name')
-            if facility_name is not None:
-                facility_name = check_type(facility_name.text)
+def parse_location(tree):
+    locations = tree.xpath("//location")
+    facility_tags = ['facility','name']
+    city_tags = ['facility', 'address', 'city']
+    zip_tags = ['facility', 'address', 'zip']
+    country_tags = ['facility', 'address', 'country']
+    contact_tags = ['contact','last_name']
+    email_tags = ['contact', 'email']
 
-    '''contact'''
-    contact_name = None
-    contact_phone = None
-    contact_ext = None
-    contact_email = None
-    location = tree.find('location')
-    if location is not None:
-        contact = location.find('contact')
-        if contact is not None:
-            contact_name = contact.find('last_name')
-            if contact_name is not None:
-                contact_name = check_type(contact_name.text)
-            contact_phone = contact.find('phone')
-            if contact_phone is not None:
-                contact_phone = check_type(contact_phone.text) 
-            contact_ext = contact.find('phone_ext')
-            if contact_ext is not None:
-                contact_ext = check_type(contact_ext.text)
-            contact_email = contact.find('email')
-            if contact_email is not None:
-                contact_email = check_type(contact_email.text)
+    facilities = []
+    cities = []
+    zips = []
+    countries = []
+    contacts = []
+    emails = []
+    row_data = []
     
-    '''backup contact'''
-    backup_name = None
-    backup_phone = None
-    backup_ext = None
-    backup_email = None
-    location = tree.find('location')
-    if location is not None:
-        backup = location.find('contact_backup')
-        if backup is not None:
-            backup_name = backup.find('last_name')
-            if backup_name is not None:
-                backup_name = check_type(backup_name.text)
-            backup_phone = backup.find('phone')
-            if backup_phone is not None:
-                backup_phone = check_type(backup_phone.text) 
-            backup_ext = backup.find('phone_ext')
-            if backup_ext is not None:
-                backup_ext = check_type(backup_ext.text)
-            backup_email = backup.find('email')
-            if backup_email is not None:
-                backup_email = check_type(backup_email.text)
-
-    row = [nct_id, facility_name,
-           contact_name, contact_phone, contact_ext, contact_email,
-           backup_name, backup_phone, backup_ext, backup_email]
-    return row
-
+    for location in locations:
+        facilities.append(parse_subtree(location, facility_tags))
+        cities.append(parse_subtree(location, city_tags))
+        zips.append(parse_subtree(location, zip_tags)) 
+        countries.append(parse_subtree(location, country_tags))
+        contacts.append(parse_subtree(location, contact_tags))
+        emails.append(parse_subtree(location, email_tags))
+    for i in range(len(locations)):
+        row_data.append([facilities[i], cities[i], zips[i], countries[i],
+                        contacts[i], emails[i]])
+    return row_data
 
 if __name__ == '__main__':
     # Inputs 
     filename_search_str = 'NCT' # uses this string to find files to parse in cwd
     outputfile = 'raw_contacts.csv' # csv where parsed results are stored
+    nctid_tags = ['id_info', 'nct_id']
+    condition_tags = ['condition']
+    columns = ['nct_id', 'condition', 'facility', 'city', 'zip', 'country', 
+               'contact', 'email']
+    out_interval = 5000
+    
     # Calcuations
+    nctids_processed = set() 
     print "\nProgram starting."
-    rows = []
     fnames = get_filenames(filename_search_str)
-    print "There are {0} files to parse.".format(len(fnames))
-    columns = ['nct_id', 'facility',
-               'contact_name', 'contact_phone', 'contact_phone_ext', 'contact_email',
-               'backup_name', 'backup_phone', 'backup_phone_ext', 'backup_email']
+    num_studies = len(fnames)
+    print "There are {0} files to parse.\n".format(num_studies)
+    num_processed = 0 
     with open(outputfile, 'wb') as csvfile:
         writer = csv.writer(csvfile, delimiter=',')
         writer.writerow(columns)
         for fname in fnames:
-            print "Parsing {0}".format(fname)
             tree = etree.parse(fname)
-            row = parse_xml(tree)
-            writer.writerow(row)
+            nct_id = parse_tree(tree, nctid_tags)
+            condition = parse_tree(tree, condition_tags)
+            location_data = parse_location(tree)
+            for loc in location_data:
+                # check if email address exists
+                if loc[5] != ' ': 
+                    facility, city, zipcode = loc[0], loc[1], loc[2]
+                    country, contact, email = loc[3], loc[4], loc[5]
+                    row = [nct_id, condition, facility, city, zipcode, country,
+                           contact, email]
+                    writer.writerow(row)
+                    nctids_processed.add(nct_id)
+            num_processed += 1
+            if num_processed % out_interval == 0:
+                print "Processed {0} files.".format(num_processed)
     print "\nParsed data available in file: {0}".format(outputfile)
+    num_studies_with_data = len(nctids_processed)
+    print "\nOf {0} studies, {1} are represented in the output.".format(num_studies,
+                                                                       num_processed)
     print "Program completed.\n"
 
    
