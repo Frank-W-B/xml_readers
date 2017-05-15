@@ -87,7 +87,8 @@ if __name__ == '__main__':
     fnames = get_filenames(filename_search_str)
     num_studies = len(fnames)
     print "There are {0} files to parse.\n".format(num_studies)
-    num_processed = 0 
+    num_processed = 0
+    num_rows_data = 0
     with open(outputfile, 'wb') as csvfile:
         writer = csv.writer(csvfile, delimiter=',')
         writer.writerow(columns)
@@ -105,13 +106,15 @@ if __name__ == '__main__':
                            contact, email]
                     writer.writerow(row)
                     nctids_processed.add(nct_id)
+                    num_rows_data += 1
             num_processed += 1
             if num_processed % out_interval == 0:
                 print "Processed {0} files.".format(num_processed)
     print "\nParsed data available in file: {0}".format(outputfile)
     num_studies_with_data = len(nctids_processed)
     print "\nOf {0} studies, {1} are represented in the output.".format(num_studies,
-                                                                       num_processed)
-    print "Program completed.\n"
+                                                              num_studies_with_data)
+    print "{0} rows written to file, all with email addresses.".format(num_rows_data) 
+    print "\nProgram completed.\n"
 
    
