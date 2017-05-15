@@ -50,6 +50,8 @@ def parse_location(tree):
     country_tags = ['facility', 'address', 'country']
     contact_tags = ['contact','last_name']
     email_tags = ['contact', 'email']
+    backup_tags = ['contact_backup','last_name']
+    backup_email_tags = ['contact_backup', 'email']
 
     facilities = []
     cities = []
@@ -57,6 +59,8 @@ def parse_location(tree):
     countries = []
     contacts = []
     emails = []
+    backups = []
+    backup_emails = []
     row_data = []
     
     for location in locations:
@@ -66,22 +70,27 @@ def parse_location(tree):
         countries.append(parse_subtree(location, country_tags))
         contacts.append(parse_subtree(location, contact_tags))
         emails.append(parse_subtree(location, email_tags))
+        backups.append(parse_subtree(location, backup_tags))
+        backup_emails.append(parse_subtree(location, backup_email_tags))
+
     for i in range(len(locations)):
         row_data.append([facilities[i], cities[i], zips[i], countries[i],
-                        contacts[i], emails[i]])
+                        contacts[i], emails[i], backups[i], backup_emails[i]])
     return row_data
 
 if __name__ == '__main__':
     # Inputs 
     filename_search_str = 'NCT' # uses this string to find files to parse in cwd
-    outputfile = 'raw_contacts.csv' # csv where parsed results are stored
+    outputfile = 'processed_contacts.csv' # csv where parsed results are stored
+    unprocessedfile = 'unprocessed_nctids.csv' # where 
     nctid_tags = ['id_info', 'nct_id']
     condition_tags = ['condition']
     columns = ['nct_id', 'condition', 'facility', 'city', 'zip', 'country', 
-               'contact', 'email']
+               'contact', 'email', 'backup', 'backup_email']
     out_interval = 5000
     
     # Calcuations
+    nctids_existing = set() 
     nctids_processed = set() 
     print "\nProgram starting."
     fnames = get_filenames(filename_search_str)
@@ -97,24 +106,38 @@ if __name__ == '__main__':
             nct_id = parse_tree(tree, nctid_tags)
             condition = parse_tree(tree, condition_tags)
             location_data = parse_location(tree)
+            nctids_existing.add(nct_id)
             for loc in location_data:
                 # check if email address exists
                 if loc[5] != ' ': 
                     facility, city, zipcode = loc[0], loc[1], loc[2]
                     country, contact, email = loc[3], loc[4], loc[5]
+                    backup, backup_email = loc[6], loc[7]
                     row = [nct_id, condition, facility, city, zipcode, country,
-                           contact, email]
+                           contact, email, backup, backup_email]
                     writer.writerow(row)
                     nctids_processed.add(nct_id)
                     num_rows_data += 1
             num_processed += 1
             if num_processed % out_interval == 0:
                 print "Processed {0} files.".format(num_processed)
+    
+    # write the nct_ids of the studies that weren't processed 
+    nctids_unprocessed = nctids_existing - nctids_processed
+    column = 'nct_id'  
+    with open(unprocessedfile, 'wb') as csvfile:
+        writer = csv.writer(csvfile, delimiter=',')
+        writer.writerow([column])
+        for nct_id in nctids_unprocessed:
+            writer.writerow([nct_id])
+    
     print "\nParsed data available in file: {0}".format(outputfile)
+    print "{0} rows were written to this file.".format(num_rows_data) 
     num_studies_with_data = len(nctids_processed)
     print "\nOf {0} studies, {1} are represented in the output.".format(num_studies,
                                                               num_studies_with_data)
-    print "{0} rows written to file, all with email addresses.".format(num_rows_data) 
+    print "Incomplete information from {0} studies not included.".format(len(nctids_unprocessed))
+    print "The nct_id's of these studies are stored in {0}.".format(unprocessedfile)
     print "\nProgram completed.\n"
 
    
